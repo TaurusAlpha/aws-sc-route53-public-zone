@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create IAM Role for Lambda to manage Route 53 records
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LambdaRoute53ManagementRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: arn:aws:iam::*:role/service-role/DestinationRoute53UpdateRole
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: LambdaRoute53AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:GetHostedZone
+                  - route53:ChangeResourceRecordSets
+                Resource: "*"
+
+Outputs:
+  RoleARN:
+    Description: "ARN of the IAM Role created for Lambda"
+    Value: !GetAtt LambdaExecutionRole.Arn
+  RoleName:
+    Description: "The name of the IAM Role"
+    Value: !Ref LambdaExecutionRole

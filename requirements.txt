@@ -1,0 +1,6 @@
+boto3
+boto3-stubs[sts,route53]
+cfnresponse
+cfn-lint
+mypy
+mypy-boto3

@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Service Catalog and StackSet Integration for Route 53 Hosted Zone and NS Records
+Parameters:
+  HostedZoneName:
+    Type: String
+    Description: "The name of the hosted zone"
+    Default: "mydomain.example.com"
+
+Resources:
+  Route53HostedZoneProduct:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref HostedZoneName
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DestinationRoute53UpdateRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: LambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:GetHostedZone
+                  - route53:ChangeResourceRecordSets
+                Resource: "*"
+              - Effect: Allow
+                Action: "sts:AssumeRole"
+                Resource: "arn:aws:iam::<DESTINATION_ACCOUNT_ID>:role/LambdaRoute53ManagementRole"
+
+  Route53UpdaterLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          def handler(event, context):
+            try:
+              # Setup for accessing Route 53
+              sts_client = boto3.client('sts')
+              assumed_role = sts_client.assume_role(RoleArn="arn:aws:iam::<DESTINATION_ACCOUNT_ID>:role/LambdaRoute53ManagementRole", RoleSessionName="R53UpdateSession")
+              credentials = assumed_role['Credentials']
+              route53 = boto3.client('route53',
+                aws_access_key_id=credentials['AccessKeyId'],
+                aws_secret_access_key=credentials['SecretAccessKey'],
+                aws_session_token=credentials['SessionToken'])
+              ns_records = list(event['ResourceProperties']['NSRecords'].split(","))
+              domain_name = event['ResourceProperties']['DomainName']
+              if event['RequestType'] == 'Delete':
+                # Handling deletion of NS records
+                response = route53.change_resource_record_sets(
+                  HostedZoneId='DESTINATION_ZONE_ID', # Change this to your destination hosted zone ID
+                  ChangeBatch={
+                    'Changes': [{
+                      'Action': 'DELETE',
+                      'ResourceRecordSet': {
+                        'Name': domain_name,
+                        'Type': 'NS',
+                        'TTL': 300,
+                        'ResourceRecords': [{'Value': ns} for ns in ns_records]
+                      }
+                    }]
+                  }
+                )
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Message": "NS records deleted"})
+                return
+
+              # Handling creation/updation of NS records
+              response = route53.change_resource_record_sets(
+                HostedZoneId='DESTINATION_ZONE_ID',
+                ChangeBatch={
+                  'Changes': [{
+                    'Action': 'UPSERT',
+                    'ResourceRecordSet': {
+                      'Name': domain_name,
+                      'Type': 'NS',
+                      'TTL': 300,
+                      'ResourceRecords': [{'Value': ns} for ns in ns_records]
+                    }
+                  }]
+                }
+              )
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {"Message": "NS records updated"})
+            except Exception as e:
+              cfnresponse.send(event, context, cfnresponse.FAILED, {"Message": str(e)})
+
+      Runtime: python3.12
+      Timeout: 120
+
+  InvokeLambda:
+    Type: "Custom::LambdaInvoker"
+    Properties:
+      ServiceToken: !GetAtt Route53UpdaterLambda.Arn
+      NSRecords: !GetAtt MyHostedZone.NameServers
+      DomainName: !Ref HostedZoneName
+
+Outputs:
+  HostedZoneID:
+    Description: "The ID of the hosted zone"
+    Value: !Ref Route53HostedZoneProduct
+
+  NameServers:
+    Description: "The NS records for the hosted zone"
+    Value: !Join [", ", !GetAtt Route53HostedZoneProduct.NameServers]
