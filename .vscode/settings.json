@@ -1,6 +1,10 @@
 {
     "yaml.schemas": {
         "file:///c%3A/Users/andreyv.ANDREYV-P14S/.vscode/extensions/atlassian.atlascode-3.0.3/resources/schemas/pipelines-schema.json": "bitbucket-pipelines.yml",
-        "https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json": "file:///home/andreyv/projects/aws-sc-r53-public-zone/rsc-r53-zone.yaml"
-    }
+        "https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json": [
+            "file:///home/andreyv/projects/aws-sc-r53-public-zone/rsc-r53-zone.yaml",
+            "file:///Users/andreyv/Projects/aws-sc-route53-public/rsc-r53-zone.yaml"
+        ]
+    },
+    "mypy.dmypyExecutable": "${workspaceFolder}/.venv/dmypy"
 }
